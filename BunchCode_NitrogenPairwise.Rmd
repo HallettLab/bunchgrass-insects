@@ -1,0 +1,1099 @@
+---
+title: "BunchCode"
+author: "Gabriella Altmire"
+date: "4/21/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+library(tidyverse) 
+library(dplyr)
+library(ggplot2)
+library(deSolve)
+library(ggsignif)
+library(lme4)
+library(car)
+library(ggpubr)
+library(reshape2)
+library(gridExtra)
+library(grid)
+library(cowplot)
+library(ggtext)
+
+## read in data
+leafdamage <- read_csv("LD2021_bromus_lupine.csv") 
+leafdamageall <- read_csv("LD2021_all.csv")
+rings <- read_csv("RCs2021.csv")
+cnratios <- read_csv("cndata2021.csv")
+coverBL <- read_csv("cover2021_bromus_lupine.csv")
+coverALL <- read_csv("cover2021_all.csv")
+biomass <- read_csv("Biomass2021.csv")
+structure <- read_csv("PlantStructure2021.csv")
+
+
+
+## SE function
+calcSE<-function(x){
+  x <- x[is.na(x)==F]
+  sd(x)/sqrt(length(x))
+}
+```
+
+
+#### LEAF DAMAGE
+
+Graphs for leaf area chewed for bromus and lupine.
+
+```{r leaf damage, include=FALSE}
+## creating cleaned leaf damage DF (removing NA's) to be used in anova
+leafdamageclean <- leafdamage %>%
+  select(Block, Plot, N, P, K, Treatment, Species, Chewing) %>%
+  na.omit(Chewing)
+
+leafdamage$N <- factor(leafdamage$N, levels = c("Nitrogen", "Control"))
+
+## creating cleaned leaf damage DF (removing NA's) for bromus (filtering lupine out) to be used in anova
+leafdamagecleanBromus <- leafdamage %>%
+  select(Block, Plot, N, P, K, Treatment, Species, Chewing) %>%
+  na.omit(Chewing) %>%
+  filter(Species != "Lupine")
+
+## creating cleaned leaf damage DF (removing NA's) for lupine (filtering bromus out) to be used in anova
+leafdamagecleanLupine <- leafdamage %>%
+  select(Block, Plot, N, P, K, Treatment, Species, Chewing) %>%
+  na.omit(Chewing) %>%
+  filter(Species != "Bromus")
+
+
+
+
+## creating object for species * chewing plot, with treatment as color
+prelimtrtplot <- leafdamage%>%
+  select(Block, Plot, N, Treatment, Species, Chewing)%>%
+  na.omit(Chewing)%>%
+  group_by(Treatment, Species)%>%
+  summarize(mean= mean(Chewing), SE = calcSE(Chewing))
+
+## reordering treatment for visualization
+prelimtrtplot$Treatment <- factor(prelimtrtplot$Treatment, levels = c("C", "C_H-", "P", "K", "PK", "N", "NP", "NK", "NPK", "NPK_H-"))
+
+## creating object for species * chewing plot, with N as color
+prelimtrtplotBL <- leafdamage%>%
+  select(Block, Plot, N, Treatment, Species, Chewing)%>%
+  na.omit(Chewing)%>%
+  group_by(N, Species)%>%
+  summarize(mean= mean(Chewing), SE = calcSE(Chewing))
+
+## creating object for species * chewing plot, with N as color and no block 3
+prelimtrtplotBLno3 <- leafdamage%>%
+  select(Block, Plot, N, Treatment, Species, Chewing)%>%
+  na.omit(Chewing)%>%
+  filter(Block != 3) %>%
+  group_by(N, Species)%>%
+  summarize(mean= mean(Chewing), SE = calcSE(Chewing))
+
+## creating object for N * chewing plot
+prelimtrtplotN <- leafdamage%>%
+  select(Block, Plot, N, Treatment, Species, Chewing)%>%
+  na.omit(Chewing)%>%
+  group_by(N)%>%
+  summarize(mean= mean(Chewing), SE = calcSE(Chewing))
+
+
+
+## plotting all the above
+ggplot(prelimtrtplot, aes(x=Species, y= mean, fill = Treatment))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("Mean % Leaf Area Chewed")
+
+LDall <- ggplot(prelimtrtplot, aes(x=Species, y= mean, group = Treatment, color = Treatment))+
+  geom_point(size = 4, position=position_dodge(width=0.5)) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.1,
+        position=position_dodge(width=0.5)) + theme_classic() + ylab("Mean % Leaf Area Chewed") + scale_color_manual(values=c("salmon1","salmon2","salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen", "darkgreen"))
+
+ggplot(prelimtrtplot, aes(x=Species, y= mean, group = Treatment, color = Treatment))+
+  geom_point(size = 4, position=position_dodge(width=0.5)) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.1,
+        position=position_dodge(width=0.5)) + theme_classic() + ylab("Mean % Leaf Area Chewed") + scale_color_manual(values=c("salmon", "salmon1","salmon2","salmon3","salmon4","lightslateblue","slateblue1","slateblue","slateblue3","slateblue4"))
+
+LDN <- ggplot(prelimtrtplotBL, aes(x=Species, y= mean, fill = N))+
+  geom_bar(stat="identity", color = "black", position=position_dodge()) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic() + 
+  ylab("Mean % Leaf Area Chewed") + scale_fill_manual(values=c("salmon1", "darkolivegreen4")) + geom_signif(
+    y_position = c(13.9, 43.2), xmin = c(0.8, 1.8), xmax = c(1.2, 2.2),
+    annotation = c("*", "***"), tip_length = 0.03) + labs(fill = "Treatment")
+
+
+ggplot(prelimtrtplotBL, aes(x=Species, y= mean, group = N, color = N))+
+  geom_point(size = 4, position=position_dodge(width=0.5)) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.1,
+        position=position_dodge(width=0.5)) + theme_minimal() + ylab("Mean % Leaf Area Chewed")
+
+
+
+p <- ggplot(prelimtrtplotBLno3, aes(x=Species, y= mean, fill = N))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("Mean % Leaf Area Chewed")
+
+Q <- ggplot(prelimtrtplotBLno3, aes(x=Species, y= mean, group = N, color = N))+
+  geom_point(size = 4, position=position_dodge(width=0.5)) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.1,
+        position=position_dodge(width=0.5)) + theme_minimal() + ylab("Mean % Leaf Area Chewed")
+
+ggarrange(p, Q)
+
+ggplot(prelimtrtplotN, aes(x=N, y= mean))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("Mean % Leaf Area Chewed")
+
+## effect of N is significant; no other nutrient treatment is. P = 0.002064. I added block in as a random effect. Block has a significant effect. Block interacts with Treatment and K.
+anova(lm(formula = Chewing ~ Treatment * Block, data = leafdamageclean))
+anova(lm(formula = Chewing ~ N + (1|Block), data = leafdamageclean)) ##  0.001812 **
+model = lm(formula = Chewing ~ N + P + N:P + (1|Block), data = leafdamageclean)
+summary(model)
+anova(model)
+x = residuals(model)
+hist(x)
+anova(lm(formula = Chewing ~ P + (1|Block), data = leafdamageclean))
+anova(lm(formula = Chewing ~ K + (1|Block), data = leafdamageclean))
+
+random<- lmer(Chewing ~ N + (1|Block), data = leafdamageclean)
+summary(random)
+print(random)
+
+## Bromus
+anova(lm(formula = Chewing ~ Treatment * Block, data = leafdamagecleanBromus))
+anova(lm(formula = Chewing ~ N + (1|Block), data = leafdamagecleanBromus)) ##  0.04235 *
+modelBr = lm(formula = Chewing ~ N + P + N:P + (1|Block), data = leafdamagecleanBromus)
+summary(modelBr)
+anova(modelBr)
+xBr = residuals(modelBr)
+hist(xBr)
+anova(lm(formula = Chewing ~ P + (1|Block), data = leafdamagecleanBromus))
+anova(lm(formula = Chewing ~ K + (1|Block), data = leafdamagecleanBromus))
+
+## Lupine
+anova(lm(formula = Chewing ~ Treatment * Block, data = leafdamagecleanLupine)) ##  0.031776 *
+anova(lm(formula = Chewing ~ N + (1|Block), data = leafdamagecleanLupine)) ##  0.0007519 ***
+anova(lm(formula = Chewing ~ P + (1|Block), data = leafdamagecleanLupine))
+anova(lm(formula = Chewing ~ K + (1|Block), data = leafdamagecleanLupine))
+
+anova(lm(formula = Chewing ~ N + (1|Block), data = leafdamagecleanLupine))
+modelLu = lm(formula = Chewing ~ N + P + N:P + (1|Block), data = leafdamagecleanLupine)
+summary(modelLu)
+anova(modelLu)
+xLu = residuals(modelLu)
+hist(x)
+```
+
+
+#### C:N 
+
+C:N, percent C, percent N, percent S.
+
+```{r C to N, include=FALSE}
+
+cnratios$N <- factor(cnratios$N, levels = c("Nitrogen", "Control"))
+
+prelimcn <- cnratios%>%
+  select(N, Species, ratio)%>%
+  group_by(N, Species)%>%
+  summarize(mean= mean(ratio), SE = calcSE(ratio))
+
+
+
+ratioN <- ggplot(prelimcn, aes(x=Species, y= mean, fill = N))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) + 
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + theme_classic() + ylab("C:N") + scale_fill_manual(values=c("salmon1", "darkolivegreen4")) + geom_signif(
+    y_position = c(39.7, 19.5), xmin = c(0.8, 1.8), xmax = c(1.2, 2.2),
+    annotation = c("*", "**"), tip_length = .03) + labs(fill = "Treatment")
+
+ratioN
+
+prelimcnTRT <- cnratios%>%
+  select(Treatment, Species, ratio)%>%
+  group_by(Treatment, Species)%>%
+  summarize(mean= mean(ratio), SE = calcSE(ratio))
+
+ratioNTRT <- ggplot(prelimcnTRT, aes(x=Species, y= mean, group = Treatment, color = Treatment))+
+  geom_point(size = 4, position=position_dodge(width=0.5)) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius")))  +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.1,
+        position=position_dodge(width=0.5)) + theme_classic() + ylab("C:N") + scale_color_manual(values=c("salmon1","salmon2","salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen", "darkgreen"))
+
+ratioNTRT
+
+cnBromus <- cnratios %>%
+  filter(Species != "Lupine")
+
+cnLupine <- cnratios %>%
+  filter(Species != "Bromus")
+
+
+bromuspercn <- cnratios%>%
+  select(N, Species, percN)%>%
+  group_by(N, Species)%>%
+  summarize(mean= mean(percN), SE = calcSE(percN))
+
+prelimcnTRT <- cnratios%>%
+  select(N, Species, Treatment, ratio)%>%
+  group_by(Treatment, Species)%>%
+  summarize(mean= mean(ratio), SE = calcSE(ratio))
+
+prelimcnTRT$Treatment <- factor(prelimcnTRT$Treatment, levels = c("C", "C_H-", "P", "K", "PK", "N", "NP", "NK", "NPK", "NPK_H-"))
+
+ggplot(prelimcnTRT, aes(x=Species, y= mean, fill = Treatment))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + theme_classic() + ylab("C:N")
+
+ggplot(prelimcnTRT, aes(x=Species, y= mean, group = Treatment, color = Treatment))+
+  geom_point(size = 4, position=position_dodge(width=0.5))+ scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.1,
+        position=position_dodge(width=0.5)) + theme_classic() + ylab("C:N")+ scale_color_manual(values=c("lightskyblue", "lightskyblue1","lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen", "darkgreen"))
+
+## C, N, and S
+cns <- cnratios %>%
+  select(percC, percN, percS, Plot, Treatment, Species, N) %>%
+  group_by(Treatment, Species) %>%
+  summarise(mean = mean(percC), SE = calcSE(percC))
+
+ggplot(cns, aes(Species, mean, fill = Treatment))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + theme_minimal() + ylab("percC")
+
+cns <- cnratios %>%
+  select(percC, percN, percS, Plot, Treatment, Species, N) %>%
+  group_by(Treatment, Species) %>%
+  summarise(mean = mean(percN), SE = calcSE(percN))
+
+ggplot(cns, aes(Species, mean, fill = Treatment))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + theme_minimal() + ylab("percN")
+
+cns <- cnratios %>%
+  select(percC, percN, percS, Plot, Treatment, Species, N) %>%
+  group_by(N, Species) %>%
+  summarise(mean = mean(percN), SE = calcSE(percN))
+
+ggplot(cns, aes(Species, mean, fill = N))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + theme_minimal() + ylab("percN")
+
+cns <- cnratios %>%
+  select(percC, percN, percS, Plot, Treatment, Species, N) %>%
+  group_by(Treatment, Species) %>%
+  summarise(mean = mean(percS), SE = calcSE(percS))
+
+ggplot(cns, aes(Species, mean, fill = Treatment))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + theme_minimal() + ylab("percS")
+
+
+## Nothing significant overall
+anova(lm(formula = ratio ~ Treatment * Block, data = cnratios))
+anova(lm(formula = ratio ~ N * Block, data = cnratios))
+anova(lm(formula = ratio ~ P * Block, data = cnratios))
+anova(lm(formula = ratio ~ K * Block, data = cnratios))
+
+#Bromus
+anova(lm(formula = ratio ~ Treatment * Block, data = cnBromus))
+anova(lm(formula = ratio ~ N * Block, data = cnBromus)) ##  0.03019 *
+anova(lm(formula = ratio ~ P * Block, data = cnBromus))
+anova(lm(formula = ratio ~ K * Block, data = cnBromus))
+
+modelBrN = lm(formula = ratio ~ N + P + N:P + (1|Block), data = cnBromus) ## 0.03304 *
+summary(modelBrN)
+anova(modelBrN)
+xBrN = residuals(modelBrN)
+hist(xBrN)
+
+#Lupine
+anova(lm(formula = ratio ~ Treatment * Block, data = cnLupine))
+anova(lm(formula = ratio ~ N * Block, data = cnLupine)) ## 0.0048 **
+anova(lm(formula = ratio ~ P * Block, data = cnLupine))
+anova(lm(formula = ratio ~ K * Block, data = cnLupine))
+
+modelLuN = lm(formula = ratio ~ N + P + N:P + (1|Block), data = cnLupine) ## 0.007977 **
+summary(modelLuN)
+anova(modelLuN)
+xLuN = residuals(modelLuN)
+hist(xLuN)
+
+
+```
+
+
+#### STRUCTURE PICS
+
+
+```{r structure, include=FALSE}
+structure$N <- factor(structure$N, levels = c("Nitrogen", "Control"))
+structure$P <- factor(structure$P, levels = c("Phosphorous", "Control"))
+
+structureclean <- structure%>%
+  select(WeekNo, Block, Plot, Treatment, N, P, K, StrArea_cm2)%>%
+  na.omit(StrArea_cm2)
+
+structureprelimN <- structure%>%
+  select(WeekNo, Block, Plot, Treatment, N, StrArea_cm2)%>%
+  na.omit(StrArea_cm2)%>%
+  group_by(N)%>%
+  summarize(mean= mean(StrArea_cm2), SE = calcSE(StrArea_cm2))
+
+structureN <- ggplot(structureprelimN, aes(x=N, y= mean, fill = N))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) + scale_x_discrete(labels=c("Nitrogen", "No Nitrogen")) + scale_fill_manual(values=c("salmon1", "darkolivegreen4")) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Structure (cm^2)") + xlab("Treatment") + theme(legend.position = "none") + geom_signif(
+    y_position = 800, xmin = 1, xmax = 2,
+    annotation = "*", tip_length = .1)
+
+structureN
+
+structureprelimP <- structure%>%
+  select(WeekNo, Block, Plot, Treatment, P, StrArea_cm2)%>%
+  na.omit(StrArea_cm2)%>%
+  group_by(P)%>%
+  summarize(mean= mean(StrArea_cm2), SE = calcSE(StrArea_cm2))
+
+structureP <- ggplot(structureprelimP, aes(x=P, y= mean, fill = P))+
+  geom_bar(stat='identity', color = "black", position=position_dodge())+ scale_x_discrete(labels=c("Phosphorous", "No Phosphorous")) + scale_fill_manual(values=c("lightskyblue3", "darkolivegreen")) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Structure (cm^2)") + xlab("Treatment") + theme(legend.position = "none") + geom_signif(
+    y_position = 800, xmin = 1, xmax = 2,
+    annotation = "*", tip_length = .1)
+
+structureP
+
+structure$Treatment <- factor(structure$Treatment, levels = c("C", "P", "K", "PK", "N", "NP", "NK", "NPK"))
+
+StructureprelimTRT <- structure%>%
+  select(WeekNo, Block, Plot, Treatment, N, StrArea_cm2)%>%
+  na.omit(StrArea_cm2)%>%
+  group_by(Treatment)%>%
+  summarize(mean= mean(StrArea_cm2), SE = calcSE(StrArea_cm2))
+
+structureT <- ggplot(StructureprelimTRT, aes(x=Treatment, y= mean, fill = Treatment))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) + scale_fill_manual(values=c("salmon1", "salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Structure (cm^2)") + xlab("Treatment") + theme(legend.position = "none")
+
+structuretimeN <- structure %>%
+  select(WeekNo, Block, Plot, Treatment, N, StrArea_cm2)%>%
+  na.omit(StrArea_cm2) %>%
+  group_by(N, WeekNo)%>%
+  summarize(mean= mean(StrArea_cm2), SE = calcSE(StrArea_cm2))
+  
+structureNtime <- ggplot(structuretimeN, aes(x=WeekNo, y= mean, color = N))+
+  geom_line(size = 1)+ theme_classic(base_size = 13) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.2, size = 1) + scale_color_manual(values=c("salmon1", "darkolivegreen4")) + ylab("Structure (cm^2)")+ xlab("Week")
+
+
+structuretimeP <- structure %>%
+  select(WeekNo, Block, Plot, Treatment, P, StrArea_cm2)%>%
+  na.omit(StrArea_cm2) %>%
+  group_by(P, WeekNo)%>%
+  summarize(mean= mean(StrArea_cm2), SE = calcSE(StrArea_cm2))
+  
+structurePtime <- ggplot(structuretimeP, aes(x=WeekNo, y= mean, color = P))+
+  geom_line(size = 1)+ theme_classic(base_size = 13) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.2, size = 1) + scale_color_manual(values=c("lightskyblue3", "darkolivegreen")) + ylab("Structure (cm^2)")+ xlab("Week")
+
+
+
+structuretimetrt <- structure %>%
+  select(WeekNo, Block, Plot, Treatment, N, StrArea_cm2)%>%
+  na.omit(StrArea_cm2) %>%
+  group_by(Treatment, WeekNo)%>%
+  summarize(mean= mean(StrArea_cm2), SE = calcSE(StrArea_cm2))
+  
+structureTRTtime <- ggplot(structuretimetrt, aes(x=WeekNo, y= mean, color = Treatment))+
+  geom_line(size = 1)+ theme_classic(base_size = 13) + scale_color_manual(values=c("salmon1", "salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + ylab("Structure (cm^2)")+ xlab("Week")
+
+## Treatment and N are significant; Block as well. No interaction between block and treatment or specific nutrient.
+anova(lm(formula = StrArea_cm2 ~ Treatment * Block, data = structureclean))
+anova(lm(formula = StrArea_cm2 ~ N * Block, data = structureclean))
+anova(lm(formula = StrArea_cm2 ~ P * Block, data = structureclean))
+anova(lm(formula = StrArea_cm2 ~ K * Block, data = structureclean))
+
+modelstr = lm(formula = StrArea_cm2 ~ N + P + K + N:P + (1|Block), data = structureclean)
+summary(modelstr)
+anova(modelstr)
+xStr = residuals(modelstr)
+hist(xStr)
+```
+
+
+
+
+
+
+```{r structure3, include=FALSE}
+## dropping block 3
+structureNO3 <- structure%>%
+  select(WeekNo, Block, Plot, Treatment, N, P, K, StrArea_cm2)%>%
+  na.omit(StrArea_cm2)%>%
+  filter(Block != 3)
+
+structureprelimNNO3 <- structure%>%
+  select(WeekNo, Block, Plot, Treatment, N, StrArea_cm2)%>%
+  na.omit(StrArea_cm2)%>%
+  filter(Block != 3)%>%
+  group_by(N)%>%
+  summarize(mean= mean(StrArea_cm2), SE = calcSE(StrArea_cm2))
+
+ggplot(structureprelimNNO3, aes(x=N, y= mean))+
+  geom_bar(stat='identity', color = "black", position=position_dodge(), fill = 'orange') +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("Structural Density") + xlab("Control or Nitrogen-Addition Treatment")
+
+StructureprelimTRTNO3 <- structure%>%
+  select(WeekNo, Block, Plot, Treatment, N, StrArea_cm2)%>%
+  na.omit(StrArea_cm2)%>%
+  filter(Block != 3)%>%
+  group_by(Treatment)%>%
+  summarize(mean= mean(StrArea_cm2), SE = calcSE(StrArea_cm2))
+
+ggplot(StructureprelimTRTNO3, aes(x=Treatment, y= mean))+
+  geom_bar(stat='identity', color = "black", position=position_dodge(), fill = 'orange') +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("Structural Density") + xlab("Control or Nitrogen-Addition Treatment")
+
+structuretimeNO3 <- structure %>%
+  select(WeekNo, Block, Plot, Treatment, N, StrArea_cm2)%>%
+  na.omit(StrArea_cm2) %>%
+  filter(Block != 3)%>%
+  group_by(N, WeekNo)%>%
+  summarize(mean= mean(StrArea_cm2), SE = calcSE(StrArea_cm2))
+  
+ggplot(structuretimeNO3, aes(x=WeekNo, y= mean, color = N))+
+  geom_line()+ theme_minimal()
+
+structuretimetrtNO3 <- structure %>%
+  select(WeekNo, Block, Plot, Treatment, N, StrArea_cm2)%>%
+  na.omit(StrArea_cm2) %>%
+  filter(Block != 3)%>%
+  group_by(Treatment, WeekNo)%>%
+  summarize(mean= mean(StrArea_cm2), SE = calcSE(StrArea_cm2))
+  
+ggplot(structuretimetrtNO3, aes(x=WeekNo, y= mean, color = Treatment))+
+  geom_line()+ theme_minimal()
+
+## 
+anova(lm(formula = StrArea_cm2 ~ Treatment * Block, data = structureNO3))
+anova(lm(formula = StrArea_cm2 ~ N * Block, data = structureNO3))
+anova(lm(formula = StrArea_cm2 ~ P, data = structureNO3))
+anova(lm(formula = StrArea_cm2 ~ K, data = structureNO3))
+```
+
+
+#### COVER
+
+Percent cover for bromus and lupine, then for all groups. First group graph includes 3/4 subplots (i.e., the two subplots I did myself). The second group graph is just the main NutNet subplot.  I did this to check if my cover estimates were similar to the group - yes.
+
+```{r cover, include=FALSE}
+
+## BROMUS AND LUPINE COVER
+
+## get rid of NA's
+cover <- coverBL%>%
+  select(Block, Plot, Treatment, N, P, Species, CoverExclosure, CoverControl, CoverNutMain) %>%
+  drop_na(CoverExclosure, CoverControl)
+
+cover$P <- factor(cover$P, levels = c("Phosphorous", "Control"))
+
+# pivot longer to get all cover estimates in one column
+pivotedcover <- cover %>%
+  pivot_longer(
+    cols = c("CoverExclosure", "CoverControl", "CoverNutMain"),
+    names_to = "SubPlot",
+    values_to = "PCover"
+  )
+
+pivotedcovermeansB <- pivotedcover %>%
+  filter(Species == "Bromus")%>%
+  group_by(Block, Plot, Treatment, N, P, Species)%>%
+  summarise(meancover = mean(PCover))
+
+modelcoverB = lm(formula = meancover ~ N + P + N:P + (1|Block), data = pivotedcovermeansB)
+summary(modelcoverB)
+anova(modelcoverB)
+xcovB = residuals(modelcoverB)
+hist(xcovB)
+
+pivotedcovermeansL <- pivotedcover %>%
+  filter(Species == "Lupine")%>%
+  group_by(Block, Plot, Treatment, N, P, Species)%>%
+  summarise(meancover = mean(PCover))
+
+modelcoverL = lm(formula = meancover ~ N + P + N:P + (1|Block), data = pivotedcovermeansL)
+summary(modelcoverL)
+anova(modelcoverL)
+xcovL = residuals(modelcoverL)
+hist(xcovL)
+
+
+## P, graph
+covermeansP <- pivotedcover%>%
+  select(Treatment, Species, P, PCover)%>%
+  group_by(P, Species)%>%
+  summarize(mean = mean(PCover), SE = calcSE(PCover))
+
+ggplot(covermeansP, aes(x=Species, y= mean, fill = P))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + scale_fill_manual(values=c("lightskyblue3", "darkolivegreen")) + theme_classic() + ylab("% Cover")
+
+covermeansPtrt <- pivotedcover%>%
+  select(Treatment, Species, P, PCover)%>%
+  group_by(P, Treatment)%>%
+  summarize(mean = mean(PCover), SE = calcSE(PCover))
+
+ggplot(covermeansPtrt, aes(x=Treatment, y= mean, fill = Treatment))+
+  geom_bar(stat='identity', position=position_dodge())+
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + scale_fill_manual(values=c("lightskyblue", "lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + theme_classic() + ylab("% Cover")
+
+
+## group by N, graph
+covermeans <- pivotedcover%>%
+  select(Treatment, Species, N, PCover)%>%
+  group_by(N, Species)%>%
+  summarize(mean = mean(PCover), SE = calcSE(PCover))
+
+ggplot(covermeans, aes(x=Species, y= mean, fill = N))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + scale_fill_manual(values=c("lightskyblue", "lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + theme_classic() + ylab("% Cover")
+
+
+## group by treatment, graph
+covermeansA <- pivotedcover%>%
+  select(Treatment, Species, Treatment, PCover)%>%
+  group_by(Treatment, Species)%>%
+  summarize(mean = mean(PCover), SE = calcSE(PCover))
+
+covermeansA$Treatment <- factor(covermeansA$Treatment, levels = c("C", "P", "K", "PK", "N", "NP", "NK", "NPK"))
+
+ggplot(covermeansA, aes(x=Species, y= mean, group = Treatment, color = Treatment))+
+  geom_point(size = 4, position=position_dodge(width=0.5))+ scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.1,
+        position=position_dodge(width=0.5)) + theme_classic() + ylab("% Cover")+ scale_color_manual(values=c("lightskyblue", "lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen"))
+
+
+
+## ALL COVER
+
+coverALL <- coverALL%>%
+  select(Block, Plot, Treatment, N, Species, Group, CoverExclosure, CoverControl, CoverNutMain) %>%
+  drop_na(CoverExclosure, CoverControl, CoverNutMain)
+
+pivotedcoverALL <- coverALL %>%
+  pivot_longer(
+    cols = c("CoverExclosure", "CoverControl", "CoverNutMain"),
+    names_to = "SubPlot",
+    values_to = "PCover"
+  )
+
+## group by N, graph
+covermeansALL <- pivotedcoverALL%>%
+  select(Treatment, Group, N, PCover)%>%
+  group_by(N, Group)%>%
+  summarize(mean = mean(PCover), SE = calcSE(PCover))
+
+a <- ggplot(covermeansALL, aes(x= Group, y= mean, fill = N))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("% Cover")
+
+a
+
+
+## ALL COVER - CHECK THAT MY COVER ESTIMATES ARE SIMILAR TO NUTNET GROUP - YES
+
+coverMain <- coverALL%>%
+  select(Block, Plot, Treatment, N, Species, Group, CoverNutMain) %>%
+  drop_na(CoverNutMain)
+
+covermeansMain <- coverMain%>%
+  select(Treatment, Group, N, CoverNutMain)%>%
+  group_by(N, Group)%>%
+  summarize(mean = mean(CoverNutMain), SE = calcSE(CoverNutMain))
+
+ggplot(covermeansMain, aes(x= Group, y= mean, fill = N))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("% Cover")
+
+```
+
+
+
+```{r relative cover, echo=FALSE, message=FALSE}
+
+coverALLa <- coverALL%>%
+  select(Block, Plot, Treatment, N, P, Species, Group, CoverExclosure, CoverControl, CoverNutMain) %>%
+  filter(Group != "Ground")%>%
+  filter(Group != "Litter")%>%
+  filter(Group != "Cover")%>%
+  filter(Group != "Gopher mound")%>%
+  drop_na(CoverExclosure, CoverControl, CoverNutMain)
+
+coverALLsums <- coverALLa %>%
+  group_by(Plot, Block) %>%
+  summarize(total_coverE=sum(CoverExclosure), total_coverC=sum(CoverControl), total_coverM=sum(CoverNutMain))
+
+workableCOVER = full_join(coverALLa, coverALLsums)
+
+proportional <- workableCOVER %>%
+  mutate(relcoverE = (CoverExclosure / total_coverE), relcoverC = (CoverControl / total_coverC), relcoverM  = (CoverNutMain /total_coverM))
+
+pivotedcoverPROP <- proportional %>%
+  pivot_longer(
+    cols = c("relcoverE", "relcoverC", "relcoverM"),
+    names_to = "SubPlot",
+    values_to = "PropCover"
+  )
+
+## group by N, graph
+covermeansPROP <- pivotedcoverPROP%>%
+  select(Treatment, Group, N, P, PropCover)%>%
+  group_by(Treatment, Group)%>%
+  summarize(mean = mean(PropCover), SE = calcSE(PropCover))
+
+ggplot(covermeansPROP, aes(x= Group, y= mean, fill = Treatment))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("% Cover")
+
+
+covermeansPROPbro <- pivotedcoverPROP%>%
+  select(Treatment, Species, N, P, PropCover)%>%
+  filter(Species == "B. carinatus")%>%
+  group_by(Treatment)%>%
+  summarize(mean = mean(PropCover), SE = calcSE(PropCover))
+
+ggplot(covermeansPROPbro, aes(x= Treatment, y= mean))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("% Cover")
+
+covermeansPROPlup <- pivotedcoverPROP%>%
+  select(Treatment, Species, N, PropCover)%>%
+  filter(Species == "L. latifolius")%>%
+  group_by(N)%>%
+  summarize(mean = mean(PropCover), SE = calcSE(PropCover))
+
+ggplot(covermeansPROPlup, aes(x= N, y= mean))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("% Cover")
+
+covermeansPROPlup <- pivotedcoverPROP%>%
+  select(Treatment, Species, P, PropCover)%>%
+  filter(Species == "L. latifolius")%>%
+  group_by(P)%>%
+  summarize(mean = mean(PropCover), SE = calcSE(PropCover))
+
+ggplot(covermeansPROPlup, aes(x= P, y= mean))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("% Cover")
+
+
+covermeansPROPlup <- pivotedcoverPROP%>%
+  select(Treatment, Species, P, PropCover)%>%
+  filter(Species == "B. carinatus")%>%
+  group_by(P)%>%
+  summarize(mean = mean(PropCover), SE = calcSE(PropCover))
+
+ggplot(covermeansPROPlup, aes(x= P, y= mean))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("% Cover")
+
+
+
+```
+
+
+#### BIOMASS
+
+Overall, less biomass in N plots? Weird? What's long-term Bunchgrass trend?
+
+```{r biomass, include=FALSE}
+biomassA <- biomass %>%
+  select(Plot, Treatment, N, group, drymassG)%>%
+  na.omit(drymassG)%>%
+  group_by(N, group)%>%
+  summarize(mean= mean(drymassG), SE = calcSE(drymassG))
+
+d <- ggplot(biomassA, aes(x=group, y= mean, fill = N))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("Biomass (g)") + xlab("Group")
+
+d + scale_fill_manual(values=c('orange', 'mediumpurple3'))
+
+## total biomass
+
+biomassB <- biomass %>%
+  select(Plot, Treatment, N, group, drymassG)%>%
+  na.omit(drymassG)%>%
+  group_by(N)%>%
+  summarize(mean= mean(drymassG), SE = calcSE(drymassG))
+
+ggplot(biomassB, aes(x=N, y= mean))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("Biomass (g)") + xlab("Treatment")
+
+
+```
+
+
+#### GRASSHOPPERS
+
+Mean grasshoppers per ring. 
+
+```{r grasshoppers, include=FALSE}
+rings$N <- factor(rings$N, levels = c("Nitrogen", "Control"))
+
+Ringprelim <- rings%>%
+  select(WeekNo, Block, Plot, Treatment, N, Count)%>%
+  na.omit(Count)%>%
+  group_by(WeekNo, Block, Plot, Treatment, N)%>%
+  summarize(mean= mean(Count))%>%
+  mutate(total = mean * 25)
+
+RingsN <- Ringprelim %>%
+  select(WeekNo, Block, Plot, Treatment, N, total)%>%
+  group_by(N)%>%
+  summarize(meanALL= mean(total), SE = calcSE(total))
+
+ringsNprepped <- ggplot(RingsN, aes(x=N, y= meanALL, fill = N))+
+  geom_bar(stat='identity', color = "black", position=position_dodge())+ scale_x_discrete(labels=c("Nitrogen", "No Nitrogen")) + scale_fill_manual(values=c("salmon1", "darkolivegreen4")) + geom_errorbar(aes(ymin = meanALL - SE, ymax = meanALL + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Mean Orthoptera per plot") + xlab("Treatment") + theme(legend.position = "none") + geom_signif(
+    y_position = 20.5, xmin = 1, xmax = 2,
+    annotation = "*", tip_length = .1) 
+
+
+RingsNweek <- Ringprelim %>%
+  select(WeekNo, Block, Plot, Treatment, N, total)%>%
+  group_by(N, WeekNo)%>%
+  summarize(meanALL= mean(total), SE = calcSE(total))
+
+ringsNweekprepped <- ggplot(RingsNweek, aes(x=WeekNo, y= meanALL, color = N))+
+  geom_line(size = 1)+ theme_classic(base_size = 13) + geom_errorbar(aes(ymin = meanALL - SE, ymax = meanALL + SE), width = 0.2, size = 1) + scale_color_manual(values=c("salmon1", "darkolivegreen4")) + ylab("Mean grasshoppers per plot")+ xlab("Week")
+
+Ringprelim$Treatment <- factor(Ringprelim$Treatment, levels = c("C", "P", "K", "PK", "N", "NP", "NK", "NPK"))
+
+Ringstrt <- Ringprelim %>%
+  select(WeekNo, Block, Plot, Treatment, N, total)%>%
+  group_by(Treatment)%>%
+  summarize(meanALL= mean(total), SE = calcSE(total))
+
+ggplot(Ringstrt, aes(x=Treatment, y= meanALL, fill = Treatment))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) + scale_fill_manual(values=c("salmon1","salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + geom_errorbar(aes(ymin = meanALL - SE, ymax = meanALL + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Orthoptera Abundance") + xlab("Treatment") + theme(legend.position = "none")
+
+
+Ringstrtweek <- Ringprelim %>%
+  select(WeekNo, Block, Plot, Treatment, N, total)%>%
+  group_by(Treatment, WeekNo)%>%
+  summarize(meanALL= mean(total), SE = calcSE(total))
+
+ggplot(Ringstrtweek, aes(x=WeekNo, y= meanALL, color = Treatment))+
+  geom_line(size = 1)+ theme_classic(base_size = 13) + scale_color_manual(values=c("salmon1","salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + ylab("Orthoptera Abundance")+ xlab("Week")
+
+RingsTRT <- Ringprelim %>%
+  select(WeekNo, Block, Plot, Treatment, N, total)%>%
+  group_by(Treatment)%>%
+  summarize(meanALL= mean(total), SE = calcSE(total))
+
+ggplot(RingsTRT, aes(x=Treatment, y= meanALL))+
+  geom_bar(stat='identity', color = "black", position=position_dodge(), fill = 'orange') +
+  geom_errorbar(aes(ymin = meanALL - SE, ymax = meanALL + SE), position=position_dodge(width=0.9), width=0.2) + theme_minimal() + ylab("Mean grasshoppers per plot") + xlab("Treatment")
+
+ringstrttime <- rings %>%
+  select(WeekNo, Block, Plot, Treatment, N, Count)%>%
+  na.omit(Count) %>%
+  group_by(Treatment, WeekNo)%>%
+  summarize(mean= mean(Count), SE = calcSE(Count))
+  
+ggplot(ringstrttime, aes(x=WeekNo, y= mean, color = Treatment))+
+  geom_smooth()+ theme_minimal()
+
+ringsntime <- rings %>%
+  select(WeekNo, Block, Plot, Treatment, N, Count)%>%
+  na.omit(Count) %>%
+  group_by(N, WeekNo)%>%
+  summarize(mean= mean(Count), SE = calcSE(Count))
+  
+ggplot(ringsntime, aes(x=WeekNo, y= mean, color = N))+
+  geom_smooth()+ theme_minimal()
+
+### hopper abundance
+anova(lm(formula = Count ~ Treatment * Block, data = rings))
+anova(lm(formula = Count ~ N * Block, data = rings))
+anova(lm(formula = Count ~ P * Block, data = rings))
+anova(lm(formula = Count ~ K * Block, data = rings))
+
+modelrings = lm(formula = Count ~ N + P + N:P + (1|Block), data = rings)
+summary(modelrings)
+anova(modelrings)
+xring = residuals(modelrings)
+hist(xring)
+
+
+
+
+## leaf damage - per capita
+leafdamageclean <- leafdamage %>%
+  select(Block, Plot, N, P, K, Treatment, Species, Chewing) %>%
+  na.omit(Chewing)%>%
+  group_by(Plot, Species)%>%
+  summarize(mean= mean(Chewing), SE = calcSE(Chewing))
+
+leafd <- dcast(leafdamageclean, Plot~Species)
+
+ringsclean <- rings %>%
+  select(Block, Plot, N, P, K, Treatment, Count)%>%
+  group_by(Block, Plot, N, P, K, Treatment)%>%
+  summarize(mean= mean(Count), SE = calcSE(Count))%>%
+  mutate(total = mean * 25)
+
+percap = merge(x=ringsclean, y=leafd, by="Plot", all.x= TRUE)
+
+percapita <- percap %>%
+  mutate(Bpercap = Bromus / total, Lpercap = Lupine / total)
+
+NpercapL <- percapita %>%
+  group_by(P)%>%
+  summarize(meanALL= mean(Lpercap), SE = calcSE(Lpercap))
+
+ggplot(NpercapL, aes(x=P, y= meanALL))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) + scale_fill_manual(values=c("lightskyblue3", "darkolivegreen")) + geom_errorbar(aes(ymin = meanALL - SE, ymax = meanALL + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13)
+
+NpercapB <- percapita %>%
+  na.omit(Bpercap)%>%
+  group_by(P)%>%
+  summarize(meanALL= mean(Bpercap), SE = calcSE(Bpercap))
+
+ggplot(NpercapB, aes(x=P, y= meanALL))+
+  geom_bar(stat='identity', color = "black", position=position_dodge()) + scale_fill_manual(values=c("lightskyblue3", "darkolivegreen")) + geom_errorbar(aes(ymin = meanALL - SE, ymax = meanALL + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13)
+
+```
+
+
+#### PRED:PREY
+
+
+```{r pred to prey, include=FALSE}
+
+```
+
+
+#### FINALIZED graphs & their stats
+## Nitrogen Panel
+```{r N graphs}
+### Main:
+## Structure:
+structureN <- ggplot(structureprelimN, aes(x=N, y= mean, fill = N))+
+  geom_bar(stat='identity', position=position_dodge()) + expand_limits(y=c(0,1000)) + scale_x_discrete(labels=c("Nitrogen", "No Nitrogen")) + scale_fill_manual(values=c("salmon1", "darkolivegreen4")) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Structure (cm^2)") + xlab("Treatment") + theme(legend.position = "none") + geom_signif(
+    y_position = 850, xmin = 1, xmax = 2,
+    annotation = "**", tip_length = .03) + annotate("text", x=0.6, y=1000, label= "A", fontface = "bold", size = 6)
+
+structureN
+
+structureNtime <- ggplot(structuretimeN, aes(x=WeekNo, y= mean, color = N))+
+  geom_line(size = 1)+ theme_classic(base_size = 13) + expand_limits(y=c(0,1000)) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.2, size = 1) + scale_color_manual(name= "Treatment", labels=c("Nitrogen", "No Nitrogen"), values=c("salmon1", "darkolivegreen4")) + ylab("Structure (cm^2)")+ xlab("Week") + annotate("text", x=1.1, y=1000, label= "B", fontface = "bold", size = 6)
+
+structureNtime
+
+# Stats: N, 0.003109 **; P, 0.018123 *, no interaction
+modelstr = lm(formula = StrArea_cm2 ~ N + P + N:P + (1|Block), data = structureclean)
+summary(modelstr)
+anova(modelstr)
+xStr = residuals(modelstr)
+hist(xStr)
+
+## Hopper Ab:
+ringsNprepped <- ggplot(RingsN, aes(x=N, y= meanALL, fill = N))+
+  geom_bar(stat='identity', position=position_dodge())+ expand_limits(y=c(0,30)) + scale_x_discrete(labels=c("Nitrogen", "No Nitrogen")) + scale_fill_manual(values=c("salmon1", "darkolivegreen4")) + geom_errorbar(aes(ymin = meanALL - SE, ymax = meanALL + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Orthoptera Abundance") + xlab("Treatment") + theme(legend.position = "none") + geom_signif(
+    y_position = 23.5, xmin = 1, xmax = 2,
+    annotation = "**", tip_length = .03) + annotate("text", x=0.6, y=30, label= "C", fontface = "bold", size = 6)
+
+ringsNprepped
+
+ringsNweekprepped <- ggplot(RingsNweek, aes(x=WeekNo, y= meanALL, color = N))+
+  geom_line(size = 1)+ theme_classic(base_size = 13) + expand_limits(y=c(0,30)) + geom_errorbar(aes(ymin = meanALL - SE, ymax = meanALL + SE), width = 0.2, size = 1) + scale_color_manual(name= "Treatment", labels=c("Nitrogen", "No Nitrogen"),values=c("salmon1", "darkolivegreen4")) + ylab("Orthoptera Abundance")+ xlab("Week") + annotate("text", x=1.1, y=30, label= "D", fontface = "bold", size = 6)
+
+ringsNweekprepped
+
+# Stats: N 0.0060 **, phosphorous nothing
+modelrings = lm(formula = Count ~ N + P + N:P + (1|Block), data = rings)
+summary(modelrings)
+anova(modelrings)
+xring = residuals(modelrings)
+hist(xring)
+
+
+## C:N:
+ratioN <- ggplot(prelimcn, aes(x=Species, y= mean, fill = N))+
+  geom_bar(stat='identity', position=position_dodge()) + expand_limits(y=c(0,50)) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) + 
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + theme_classic() + ylab("C:N") + scale_fill_manual(labels= c("Nitrogen", "No Nitrogen"),values=c("salmon1", "darkolivegreen4")) + geom_signif(
+    y_position = c(41.7, 21.5), xmin = c(0.8, 1.8), xmax = c(1.2, 2.2),
+    annotation = c("*", "**"), tip_length = .03) + labs(fill = "Treatment") + annotate("text", x=0.6, y=50, label= "E", fontface = "bold", size = 6)
+
+ratioN 
+
+# Bromus stats: 0.03304 *, phosphorous nothing
+modelBrN = lm(formula = ratio ~ N + P + N:P + (1|Block), data = cnBromus)
+summary(modelBrN)
+anova(modelBrN)
+xBrN = residuals(modelBrN)
+hist(xBrN)
+
+# Lupine stats: 0.007977 **, phosphorous nothing
+modelLuN = lm(formula = ratio ~ N + P + N:P + (1|Block), data = cnLupine)
+summary(modelLuN)
+anova(modelLuN)
+xLuN = residuals(modelLuN)
+hist(xLuN)
+
+
+## Leaf Damage:
+LDN <- ggplot(prelimtrtplotBL, aes(x=Species, y= mean, fill = N))+
+  geom_bar(stat="identity", position=position_dodge()) + expand_limits(y=c(0,60)) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic() + 
+  ylab("Leaf Tissue Removed") + scale_fill_manual(labels= c("Nitrogen", "No Nitrogen"), values=c("salmon1", "darkolivegreen4")) + geom_signif(
+    y_position = c(17.9, 47.2), xmin = c(0.8, 1.8), xmax = c(1.2, 2.2),
+    annotation = c("*", "***"), tip_length = 0.03) + labs(fill = "Treatment")  + annotate("text", x=0.6, y=60, label= "F", fontface = "bold", size = 6)
+
+LDN
+
+# Bromus stats: 0.0437 *, phosphorous nothing
+modelBr = lm(formula = Chewing ~ N + P + N:P + (1|Block), data = leafdamagecleanBromus)
+summary(modelBr)
+anova(modelBr)
+xBr = residuals(modelBr)
+hist(xBr)
+
+# Lupine stats: 0.0008325 ***, phosphorous nothing
+modelLu = lm(formula = Chewing ~ N + P + N:P + (1|Block), data = leafdamagecleanLupine)
+summary(modelLu)
+anova(modelLu)
+xLu = residuals(modelLu)
+hist(x)
+
+
+# PANEL
+LDN_legend <- get_legend(LDN)
+
+Nplot <- ggarrange(structureN, structureNtime, ringsNprepped, ringsNweekprepped, ratioN, LDN, ncol=2, nrow=3, legend.grob = LDN_legend, legend = "right")
+ggsave("plot.pdf", height = 7.5, width = 7)
+
+
+
+
+### Supplement:
+## Structure:
+
+StructureprelimTRT$Treatment <- factor(StructureprelimTRT$Treatment, levels = c("N", "NP", "NK", "NPK", "C", "P", "K", "PK"))
+structuretimetrt$Treatment <- factor(structuretimetrt$Treatment, levels = c("N", "NP", "NK", "NPK", "C", "P", "K", "PK"))
+Ringstrtweek$Treatment <- factor(Ringstrtweek$Treatment, levels = c("N", "NP", "NK", "NPK", "C", "P", "K", "PK"))
+Ringstrt$Treatment <- factor(Ringstrt$Treatment, levels = c("N", "NP", "NK", "NPK", "C", "P", "K", "PK"))
+Ringstrt$Treatment <- factor(Ringstrt$Treatment, levels = c("N", "NP", "NK", "NPK", "C", "P", "K", "PK"))
+prelimcnTRT$Treatment <- factor(prelimcnTRT$Treatment, levels = c("N", "NP", "NK", "NPK", "NPK_H-", "C", "C_H-", "P", "K", "PK"))
+prelimtrtplot$Treatment <- factor(prelimtrtplot$Treatment, levels = c("N", "NP", "NK", "NPK", "NPK_H-", "C", "C_H-", "P", "K", "PK"))
+
+
+
+structureTRT <- ggplot(StructureprelimTRT, aes(x=Treatment, y= mean, fill = Treatment))+
+  geom_bar(stat='identity', position=position_dodge()) + expand_limits(y=c(0,1000)) + scale_fill_manual(values=c("salmon1", "salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Structure (cm^2)") + xlab("Treatment") + theme(legend.position = "none") + annotate("text", x=1, y=1000, label= "A", fontface = "bold", size = 6)
+
+structureTRTtime <- ggplot(structuretimetrt, aes(x=WeekNo, y= mean, color = Treatment))+
+  geom_line(size = 1) + expand_limits(y=c(0,1000)) + theme_classic(base_size = 13) + scale_color_manual(values=c("salmon1", "salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + ylab("Structure (cm^2)")+ xlab("Week") + annotate("text", x=1.1, y=1000, label= "B", fontface = "bold", size = 6)
+
+## Hopper Ab:
+ringstrtready <- ggplot(Ringstrt, aes(x=Treatment, y= meanALL, fill = Treatment))+
+  geom_bar(stat='identity', position=position_dodge()) + expand_limits(y=c(0,35)) + scale_fill_manual(values=c("salmon1","salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + geom_errorbar(aes(ymin = meanALL - SE, ymax = meanALL + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Orthoptera Abundance") + xlab("Treatment") + theme(legend.position = "none") + annotate("text", x=1, y=35, label= "C", fontface = "bold", size = 6)
+
+ringstrttime <- ggplot(Ringstrtweek, aes(x=WeekNo, y= meanALL, color = Treatment))+
+  geom_line(size = 1)+ expand_limits(y=c(0,35))+ theme_classic(base_size = 13) + scale_color_manual(values=c("salmon1","salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + ylab("Orthoptera Abundance")+ xlab("Week") + annotate("text", x=1.1, y=35, label= "D", fontface = "bold", size = 6)
+
+## C:N:
+ratioNTRT <- ggplot(prelimcnTRT, aes(x=Species, y= mean, fill = Treatment))+
+geom_bar(stat="identity", position=position_dodge()) + expand_limits(y=c(0,50)) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic() + 
+  ylab("C:N") + scale_fill_manual(values=c("salmon1","salmon2","salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen", "darkgreen")) + annotate("text", x=0.55, y=50, label= "E", fontface = "bold", size = 6)
+
+ratioNTRT
+## Leaf Damage:
+LDall <- ggplot(prelimtrtplot, aes(x=Species, y= mean, fill = Treatment))+
+geom_bar(stat="identity", position=position_dodge()) + expand_limits(y=c(0,50)) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic() + 
+  ylab("Leaf Tissue Removed") + scale_fill_manual(values=c("salmon1","salmon2","salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen", "darkgreen")) + annotate("text", x=0.55, y=50, label= "F", fontface = "bold", size = 6)
+
+LDall
+
+LDNTRT_legend <- get_legend(LDall)
+Nplot <- ggarrange(structureTRT, structureTRTtime, ringstrtready, ringstrttime, ratioNTRT, LDall, ncol=2, nrow=3, legend.grob = LDNTRT_legend, legend = "right")
+ggsave("plotTRT.pdf", height = 7.5, width = 7)
+```
+
+## Phosphorous panel
+```{r P graphs}
+### Main:
+## % Cover:
+coverP <- ggplot(covermeansP, aes(x=Species, y= mean, fill = P))+
+  geom_bar(stat='identity', position=position_dodge()) + expand_limits(y=c(0,20)) + scale_x_discrete(labels=expression(italic("B. carinatus"), italic("L. latifolius"))) +
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + scale_fill_manual(labels= c("Phosphorous", "No Phosphorous"),values=c("lightskyblue3", "darkolivegreen4"))  + theme_classic() + ylab("% Cover") + geom_signif(
+    y_position = c(16), xmin = c(0.8), xmax = c(1.2),
+    annotation = c("***"), tip_length = .03) + labs(fill = "Treatment") + theme(legend.position = "top") + annotate("text", x=0.6, y=20, label= "A", fontface = "bold", size = 6)
+
+coverP
+# Bromus stats: P - 0.0001085 ***
+modelcoverB = lm(formula = meancover ~ N + P + N:P + (1|Block), data = pivotedcovermeansB)
+summary(modelcoverB)
+anova(modelcoverB)
+xcovB = residuals(modelcoverB)
+hist(xcovB)
+
+# Lupine stats: nothing sig
+modelcoverL = lm(formula = meancover ~ N + P + N:P + (1|Block), data = pivotedcovermeansL)
+summary(modelcoverL)
+anova(modelcoverL)
+xcovL = residuals(modelcoverL)
+hist(xcovL)
+
+## Structure: 
+structureP <- ggplot(structureprelimP, aes(x=P, y= mean, fill = P))+
+  geom_bar(stat='identity', position=position_dodge()) + expand_limits(y=c(0,1000))+ scale_x_discrete(labels=c("Phosphorous", "No Phosphorous")) + scale_fill_manual(values=c("lightskyblue3", "darkolivegreen4")) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Structure (cm^2)") + xlab("Treatment") + theme(legend.position = "none") + geom_signif(
+    y_position = 800, xmin = 1, xmax = 2,
+    annotation = "*", tip_length = .03) + annotate("text", x=0.6, y=1000, label= "B", fontface = "bold", size = 6)
+
+structureP 
+
+structurePtime <- ggplot(structuretimeP, aes(x=WeekNo, y= mean, color = P)) + expand_limits(y=c(0,1000)) + geom_line(size = 1)+ theme_classic(base_size = 13) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width = 0.2, size = 1) + scale_color_manual(values=c("lightskyblue3", "darkolivegreen4")) + ylab("Structure (cm^2)")+ xlab("Week") + annotate("text", x=1.1, y=1000, label= "C", fontface = "bold", size = 6)
+
+structurePtime
+
+# stats: P, 0.018123 *
+modelstr = lm(formula = StrArea_cm2 ~ N + P + N:P + (1|Block), data = structureclean)
+summary(modelstr)
+anova(modelstr)
+xStr = residuals(modelstr)
+hist(xStr)
+
+P_legend <- get_legend(coverP)
+Nplot <- ggarrange(coverP, structureP, structurePtime, ncol=1, nrow=3, legend.grob = P_legend, legend = "top")
+ggsave("plotPhos.pdf", height = 7.5, width = 3.5)
+
+### Supplemental:
+## % Cover
+
+covermeansPtrt$Treatment <- factor(covermeansPtrt$Treatment, levels = c("P", "NP", "PK", "NPK", "C", "N", "K", "NK"))
+
+pcovertrt <- ggplot(covermeansPtrt, aes(x=Treatment, y= mean, fill = Treatment))+
+  geom_bar(stat='identity', position=position_dodge())+
+  geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), width=0.2, position = position_dodge(width=0.9)) + scale_fill_manual(values=c("lightskyblue", "lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + theme_classic() + ylab("% Cover") + annotate("text", x=1.1, y=20, label= "A", fontface = "bold", size = 6)
+
+pcovertrt 
+## Structure
+
+StructureprelimTRT$Treatment <- factor(StructureprelimTRT$Treatment, levels = c("P", "NP", "PK", "NPK", "C", "N", "K", "NK"))
+
+structureTRTP <- ggplot(StructureprelimTRT, aes(x=Treatment, y= mean, fill = Treatment))+
+  geom_bar(stat='identity', position=position_dodge()) + expand_limits(y=c(0,1000)) + scale_fill_manual(values=c("lightskyblue", "lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + geom_errorbar(aes(ymin = mean - SE, ymax = mean + SE), position=position_dodge(width=0.9), width=0.2) + theme_classic(base_size = 13) + ylab("Structure (cm^2)") + xlab("Treatment") + theme(legend.position = "none") + annotate("text", x=1.1, y=1000, label= "B", fontface = "bold", size = 6)
+
+structureTRTP
+
+structuretimetrt$Treatment <- factor(structuretimetrt$Treatment, levels = c("P", "NP", "PK", "NPK", "C", "N", "K", "NK"))
+
+structureTRTtimeP <- ggplot(structuretimetrt, aes(x=WeekNo, y= mean, color = Treatment))+
+  geom_line(size = 1) + expand_limits(y=c(0,1000)) + theme_classic(base_size = 13) + scale_color_manual(values=c("lightskyblue", "lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen")) + ylab("Structure (cm^2)")+ xlab("Week") + annotate("text", x=1.2, y=1000, label= "C", fontface = "bold", size = 6)
+
+structureTRTtimeP
+
+Ptrt_legend <- get_legend(pcovertrt)
+Nplot <- ggarrange(pcovertrt, structureTRTP, structureTRTtimeP, ncol=1, nrow=3, legend.grob = Ptrt_legend, legend = "right")
+ggsave("plotPhostrt.pdf", height = 7.5, width = 3.5)
+
+```

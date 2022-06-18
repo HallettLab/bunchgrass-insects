@@ -1,0 +1,596 @@
+---
+title: "BunchLT"
+author: "Gabriella Altmire"
+date: "4/26/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(mgcv)
+library(dplyr)
+### Data Import
+source("data-cleaning.R")
+rm(scaledat)
+cover2021 <- read_csv("cover2021_all_forLT.csv")
+
+calcSE<-function(x){
+  x <- x[is.na(x)==F]
+  sd(x)/sqrt(length(x))
+}
+
+bunchgrass <- nutdat %>% 
+  filter(site_code == "bnch.us")
+
+bunchgrassfix <- bunchgrass %>%
+  select(plot, block, year_trt, trt, Taxon, functional_group, max_cover)
+
+cover2021fix <- cover2021 %>%
+  select(plot, block, year_trt, trt, Taxon, functional_group, max_cover)%>%
+  filter(functional_group != "REMOVE")
+
+bunchgrassall <- rbind(bunchgrassfix, cover2021fix)
+
+bunchgrassall <- bunchgrassall %>%
+  filter(functional_group != "BRYOPHYTE")%>%
+  filter(functional_group != "COVER")%>%
+  filter(functional_group != "GROUND")%>%
+  filter(functional_group != "LICHEN")%>%
+  filter(functional_group != "LITTER")%>%
+  filter(functional_group != "NON-LIVE")
+```
+
+```{r not relative to control}
+bunchgrassall$trt <- factor(bunchgrassall$trt, levels = c("Control", "Fence", "P", "K", "PK", "N", "NP", "NK", "NPK", "NPK+Fence"))
+
+bunchgrassall$N[bunchgrassall$trt=="N"]<-"Nitrogen"
+bunchgrassall$N[bunchgrassall$trt=="NP"]<-"Nitrogen"
+bunchgrassall$N[bunchgrassall$trt=="NK"]<-"Nitrogen"
+bunchgrassall$N[bunchgrassall$trt=="NPK"]<-"Nitrogen"
+bunchgrassall$N[bunchgrassall$trt=="NPK+Fence"]<-"Nitrogen"
+
+bunchgrassall$N[bunchgrassall$trt=="Control"]<-"Control"
+bunchgrassall$N[bunchgrassall$trt=="Fence"]<-"Control"
+bunchgrassall$N[bunchgrassall$trt=="P"]<-"Control"
+bunchgrassall$N[bunchgrassall$trt=="K"]<-"Control"
+bunchgrassall$N[bunchgrassall$trt=="PK"]<-"Control"
+
+## RELATIVE
+RELATIVE3 <- bunchgrassall %>%
+  na.omit(max_cover)%>%
+  group_by(plot, block, year_trt) %>%
+  summarize(total_cover=sum(max_cover))
+
+RELATIVE2 = full_join(bunchgrassall,RELATIVE3)
+
+RELATIVE <- RELATIVE2 %>%
+  mutate(relcover = (max_cover / total_cover))
+
+RELATIVE[is.na(RELATIVE)]= 0 
+
+
+#### GRASS - total
+GRASS <- bunchgrassall %>%
+  filter(functional_group == "GRASS") %>%
+  na.omit(max_cover)%>%
+  group_by(year_trt, trt)%>%
+  summarize(mean= mean(max_cover), SE = calcSE(max_cover))
+  
+ggplot(GRASS, aes(x=year_trt, y= mean, color = trt))+
+ geom_line(size = 1)+ theme_classic() + scale_color_manual(values=c("salmon1","salmon2","salmon3","salmon4","orangered4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen", "darkgreen")) + ylab("Mean % cover") + xlab("Years since treatment start") + ggtitle("Grass - total") + ylim(0, 40)
+
+
+
+#### GRASS - relative
+GRASSr <- RELATIVE %>%
+  filter(functional_group == "GRASS") %>%
+  group_by(year_trt, trt)%>%
+  summarize(mean= mean(relcover), SE = calcSE(relcover))
+  
+ggplot(GRASSr, aes(x=year_trt, y= mean, color = trt))+
+ geom_line(size = 1)+ theme_classic(base_size = 13) + scale_color_manual(values=c("lightskyblue", "lightskyblue1","lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen", "darkgreen")) + ylab("Mean proportional cover") + xlab("Years since treatment start") + ggtitle("Grass")
+
+GRASSrN <- RELATIVE %>%
+  filter(functional_group == "GRASS") %>%
+  group_by(year_trt, N)%>%
+  summarize(mean= mean(relcover), SE = calcSE(relcover))
+  
+ggplot(GRASSrN, aes(x=year_trt, y= mean, color = N))+
+ geom_line(size = 1)+ theme_classic(base_size = 13) + scale_color_manual(values=c("lightskyblue3", "darkolivegreen")) + ylab("Mean proportional cover") + xlab("Years since treatment start") + ggtitle("Grass")
+
+
+
+
+#### LEGUME - relative
+LEGUMEr <- RELATIVE %>%
+  filter(functional_group == "LEGUME") %>%
+  group_by(year_trt, trt)%>%
+  summarize(mean= mean(relcover), SE = calcSE(relcover))
+  
+ggplot(LEGUMEr, aes(x=year_trt, y= mean, color = trt))+
+ geom_line(size = 1)+ theme_classic(base_size = 13) + scale_color_manual(values=c("lightskyblue", "lightskyblue1","lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen", "darkgreen")) + ylab("Mean proportional cover") + xlab("Years since treatment start") + ggtitle("Legume")
+
+LEGUMErN <- RELATIVE %>%
+  filter(functional_group == "LEGUME") %>%
+  group_by(year_trt, N)%>%
+  summarize(mean= mean(relcover), SE = calcSE(relcover))
+  
+ggplot(LEGUMErN, aes(x=year_trt, y= mean, color = N))+
+ geom_line(size = 1)+ theme_classic(base_size = 13) + scale_color_manual(values=c("lightskyblue3", "darkolivegreen")) + ylab("Mean proportional cover") + xlab("Years since treatment start") + ggtitle("Legume")
+
+
+
+
+#### BROMUS - relative
+BROMUSr <- RELATIVE %>%
+  filter(Taxon == "BROMUS CARINATUS") %>%
+  group_by(year_trt, trt)%>%
+  summarize(mean= mean(relcover), SE = calcSE(relcover))
+  
+ggplot(BROMUSr, aes(x=year_trt, y= mean, color = trt))+
+ geom_line(size = 1)+ theme_classic(base_size = 13) + scale_color_manual(values=c("lightskyblue", "lightskyblue1","lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen", "darkgreen")) + ylab("Mean proportional cover") + xlab("Years since treatment start") + ggtitle("B. carinatus")
+
+BROMUSrN <- RELATIVE %>%
+  filter(Taxon == "BROMUS CARINATUS") %>%
+  group_by(year_trt, N)%>%
+  summarize(mean= mean(relcover), SE = calcSE(relcover))
+  
+ggplot(BROMUSrN, aes(x=year_trt, y= mean, color = N))+
+ geom_line(size = 1)+ theme_classic(base_size = 13) + scale_color_manual(values=c("lightskyblue3", "darkolivegreen")) + ylab("Mean proportional cover") + xlab("Years since treatment start") + ggtitle("B. carinatus")
+
+
+
+#### LUPINE - relative
+LUPINEr <- RELATIVE %>%
+  filter(Taxon == "LUPINUS LATIFOLIUS") %>%
+  group_by(year_trt, trt)%>%
+  summarize(mean= mean(relcover), SE = calcSE(relcover))
+  
+ggplot(LUPINEr, aes(x=year_trt, y= mean, color = trt))+
+ geom_line(size = 1)+ theme_classic(base_size = 13) + scale_color_manual(values=c("lightskyblue", "lightskyblue1","lightskyblue2","lightskyblue3","lightskyblue4","darkolivegreen2","darkolivegreen3","darkolivegreen4","darkolivegreen", "darkgreen")) + ylab("Mean proportional cover") + xlab("Years since treatment start") + ggtitle("L. latifolius")
+
+LUPINErN <- RELATIVE %>%
+  filter(Taxon == "LUPINUS LATIFOLIUS") %>%
+  group_by(year_trt, N)%>%
+  summarize(mean= mean(relcover), SE = calcSE(relcover))
+  
+ggplot(LUPINErN, aes(x=year_trt, y= mean, color = N))+
+ geom_line(size = 1)+ theme_classic(base_size = 13) + scale_color_manual(values=c("lightskyblue3", "darkolivegreen")) + ylab("Mean proportional cover") + xlab("Years since treatment start") + ggtitle("L. latifolius")
+```
+
+
+```{r separating control, unique ID, include=FALSE}
+noncontrol <- bunchgrassall%>%
+  filter(trt != "Control")%>%
+  filter(trt != "Fence")%>%
+  mutate(unique_ID = paste(block, year_trt, Taxon, sep = "_"))
+
+control <- bunchgrassall %>%
+  select(block, year_trt, trt, Taxon, functional_group, max_cover)%>%
+  filter(trt == "Control")%>%
+  mutate(unique_ID = paste(block, year_trt, Taxon, sep = "_"))
+
+controla <- control %>%
+  select(block, year_trt, Taxon, functional_group, max_cover, unique_ID)
+
+controlb <- rename(controla, max_coverC = max_cover)
+
+workable = full_join(noncontrol, controlb, by = "unique_ID")
+
+```
+
+
+
+```{r by functional groups, echo=FALSE, message=FALSE}
+GrFoLe <- workable %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  filter(!is.na(block.x))
+
+GrFoLe[is.na(GrFoLe)] <- 0
+
+
+
+## Relative
+GrFoLeRELATIVE <- GrFoLe %>%
+  group_by(plot, block.x, year_trt.x) %>%
+  summarize(total_cover=sum(max_cover), total_coverC=sum(max_coverC))
+
+workable2 = full_join(GrFoLe, GrFoLeRELATIVE)
+
+relative <- workable2 %>%
+  mutate(relcover = (max_cover / total_cover), relcoverC = (max_coverC / total_coverC))
+
+
+
+
+#### Grass
+GrFoLechange <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(functional_group.x == "GRASS") %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+  
+ggplot(GrFoLechange, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Grass") + ylim(-50, 70)
+
+ggplot(GrFoLechange, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Grass") + ylim(-50, 70)
+
+#### Grass minus block 3
+GrFoLegrassm <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(functional_group.x == "GRASS") %>%
+  filter(block.x != 3) %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+  
+ggplot(GrFoLegrassm, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Grass (minus block 3)") + ylim(-50, 70)
+
+ggplot(GrFoLegrassm, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Grass") + ylim(-50, 70)
+
+#### Grass RELATIVE
+grassprop <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(functional_group.x == "GRASS") %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+  
+ggplot(grassprop, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Grass - PROPORTIONAL")
+
+ggplot(grassprop, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Grass - PROPORTIONAL")
+
+#### Grass minus block 3 RELATIVE
+grasspropm <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(functional_group.x == "GRASS") %>%
+  filter(block.x != 3) %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+  
+ggplot(grasspropm, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Grass - PROPORTIONAL (minus block 3)")
+
+
+
+
+
+##### Graminoid
+GrFoLegraminoid <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(functional_group.x == "GRAMINOID") %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+  
+ggplot(GrFoLegraminoid, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Graminoid") + ylim(-50, 70)
+
+##### Graminoid minus 3
+GrFoLegraminoidm <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(functional_group.x == "GRAMINOID") %>%
+  filter(block.x != 3) %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+  
+ggplot(GrFoLegraminoidm, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Graminoid (minus block 3)") + ylim(-50, 70)
+
+#### Graminoid RELATIVE
+gramprop <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(functional_group.x == "GRAMINOID") %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+  
+ggplot(gramprop, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Graminoid - PROPORTIONAL")
+
+#### Graminoid minus block 3 RELATIVE
+grampropm <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(functional_group.x == "GRAMINOID") %>%
+  filter(block.x != 3) %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+  
+ggplot(grampropm, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Graminoid - PROPORTIONAL (minus block 3)")
+
+
+
+#### Legumes
+GrFoLelegume <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(functional_group.x == "LEGUME") %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+
+ggplot(GrFoLelegume, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0)+ ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Legume") + ylim(-50, 70)
+
+#### Legume minus block 3
+GrFoLelegumem <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(functional_group.x == "LEGUME") %>%
+  filter(block.x != 3) %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+  
+ggplot(GrFoLelegumem, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Legume (minus block 3)") + ylim(-50, 70)
+
+#### Legume RELATIVE
+legprop <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(functional_group.x == "LEGUME") %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+  
+ggplot(legprop, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Legume - PROPORTIONAL")
+
+#### Legume minus block 3 RELATIVE
+legpropm <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(functional_group.x == "LEGUME") %>%
+  filter(block.x != 3) %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+  
+ggplot(legpropm, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Legume - PROPORTIONAL (minus block 3)")
+
+
+
+
+
+#### Forbs
+GrFoLeforb <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(functional_group.x == "FORB") %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+
+ggplot(GrFoLeforb, aes(x=year_trt.x, y= mean, color = trt))+
+ geom_line()+ theme_minimal() + geom_hline(yintercept = 0)+ ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Forb") + ylim(-50, 70)
+
+ggplot(GrFoLeforb, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Forb") + ylim(-50, 70)
+
+
+#### Forbs minus block 3
+GrFoLeforbm <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(functional_group.x == "FORB") %>%
+  filter(block.x != 3) %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+  
+ggplot(GrFoLeforbm, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Forb (minus block 3)") + ylim(-50, 70)
+
+ggplot(GrFoLeforbm, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Forb (minus block 3)") + ylim(-50, 70)
+
+
+
+
+#### Forb RELATIVE
+forbprop <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(functional_group.x == "FORB") %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+  
+ggplot(forbprop, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Forb - PROPORTIONAL")
+
+ggplot(forbprop, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Forb - PROPORTIONAL")
+
+#### Forb minus block 3 RELATIVE
+forbpropm <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(functional_group.x == "FORB") %>%
+  filter(block.x != 3) %>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+  
+ggplot(forbpropm, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Forb - PROPORTIONAL (minus block 3)")
+
+ggplot(forbpropm, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Forb - PROPORTIONAL (minus block 3)")
+
+
+```
+
+
+
+
+```{r by fs, echo=FALSE, message=FALSE}
+#### GRASS, FORB, LEGUME, GRAMINOID 
+GrFoLespecific <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(trt == "NPK")%>%
+  filter(functional_group.x != "BRYOPHYTE") %>%
+  filter(functional_group.x != "NON-LIVE") %>%
+  filter(functional_group.x != "LICHEN") %>%
+  filter(functional_group.x != "WOODY") %>%
+  group_by(year_trt.x, functional_group.x)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+
+ggplot(GrFoLespecific, aes(x=year_trt.x, y= mean, color = functional_group.x))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("NPK") + ylim(-50, 70)
+
+ggplot(GrFoLespecific, aes(x=year_trt.x, y= mean, color = functional_group.x))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("NPK") + ylim(-50, 70)
+
+#### GRASS, FORB, LEGUME, GRAMINOID PROP
+propall <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(trt == "NPK")%>%
+  filter(functional_group.x != "BRYOPHYTE") %>%
+  filter(functional_group.x != "NON-LIVE") %>%
+  filter(functional_group.x != "LICHEN") %>%
+  filter(functional_group.x != "WOODY") %>%
+  group_by(year_trt.x, functional_group.x)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+
+ggplot(propall, aes(x=year_trt.x, y= mean, color = functional_group.x))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("NPK - PROPORTIONAL")
+
+ggplot(propall, aes(x=year_trt.x, y= mean, color = functional_group.x))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("NPK - PROPORTIONAL")
+
+
+propall3 <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(block.x != 3) %>%
+  filter(trt == "NPK")%>%
+  filter(functional_group.x != "BRYOPHYTE") %>%
+  filter(functional_group.x != "NON-LIVE") %>%
+  filter(functional_group.x != "LICHEN") %>%
+  filter(functional_group.x != "WOODY") %>%
+  group_by(year_trt.x, functional_group.x)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+
+ggplot(propall3, aes(x=year_trt.x, y= mean, color = functional_group.x))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("NPK - PROPORTIONAL (minus block 3)")
+
+ggplot(propall3, aes(x=year_trt.x, y= mean, color = functional_group.x))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("NPK - PROPORTIONAL (minus block 3)")
+
+
+
+
+### Bromus
+Bromus <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(Taxon.x == "BROMUS CARINATUS")%>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+
+ggplot(Bromus, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Bromus") + ylim(-50, 70)
+
+ggplot(Bromus, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Bromus") + ylim(-50, 70)
+
+Bromus3 <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(block.x != 3) %>%
+  filter(Taxon.x == "BROMUS CARINATUS")%>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+
+ggplot(Bromus3, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Bromus (minus block 3") + ylim(-50, 70)
+
+ggplot(Bromus3, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Bromus (minus block 3") + ylim(-50, 70)
+
+### Bromus PROP
+Bromusprop <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(Taxon.x == "BROMUS CARINATUS")%>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+
+ggplot(Bromusprop, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Bromus - PROPORTIONAL")
+
+ggplot(Bromusprop, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Bromus - PROPORTIONAL")
+
+Bromusprop3 <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(block.x != 3) %>%
+  filter(Taxon.x == "BROMUS CARINATUS")%>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+
+ggplot(Bromusprop3, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Bromus - PROPORTIONAL (minus block 3)")
+
+ggplot(Bromusprop3, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Bromus - PROPORTIONAL (minus block 3)")
+
+
+### Lupine
+Lupine <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(Taxon.x == "LUPINUS LATIFOLIUS")%>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+
+ggplot(Lupine, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Lupine") + ylim(-50, 70)
+
+Lupine3 <- GrFoLe %>%
+  select(plot, block.x, unique_ID, year_trt.x, trt, Taxon.x, functional_group.x, max_cover, max_coverC)%>%
+  mutate(covChange = max_cover - max_coverC)%>%
+  filter(block.x != 3) %>%
+  filter(Taxon.x == "LUPINUS LATIFOLIUS")%>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(covChange), SE = calcSE(covChange))
+
+ggplot(Lupine3, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Lupine (minus block 3)") + ylim(-50, 70)
+
+### Lupine PROP
+Lupineprop <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(Taxon.x == "LUPINUS LATIFOLIUS")%>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+
+ggplot(Lupineprop, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Lupine - PROPORTIONAL")
+
+ggplot(Lupineprop, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_line()+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Lupine - PROPORTIONAL")
+
+Lupineprop3 <- relative %>%
+  mutate(relcovChange = relcover - relcoverC)%>%
+  na.omit(relcoverC)%>%
+  filter(block.x != 3) %>%
+  filter(Taxon.x == "LUPINUS LATIFOLIUS")%>%
+  group_by(year_trt.x, trt)%>%
+  summarize(mean= mean(relcovChange), SE = calcSE(relcovChange))
+
+ggplot(Lupineprop3, aes(x=year_trt.x, y= mean, color = trt))+
+  geom_smooth(se=FALSE)+ theme_minimal() + geom_hline(yintercept = 0) + ylab("Mean difference from control cover") + xlab("Years since treatment start") + ggtitle("Lupine - PROPORTIONAL (minus block 3)")
+```
